@@ -1,0 +1,186 @@
+Only in /home/kern/build/original_linux/linux-5.14.9/: .git
+Only in /home/kern/build/original_linux/linux-5.14.9/: System.map-5.14.9
+diff -r /home/kern/build/original_linux/original/linux-5.14.9/arch/x86/entry/syscalls/syscall_64.tbl /home/kern/build/original_linux/linux-5.14.9/arch/x86/entry/syscalls/syscall_64.tbl
+371a372,378
+> 448	common	hello_world		sys_hello_world
+> 449	common	kernel_2d_memcpy	sys_kernel_2d_memcpy
+> 450	common	delay_execution		sys_delay_execution
+> 451	common	allocate_queue		sys_allocate_queue
+> 452	common	enqueue_queue		sys_enqueue_queue
+> 453	common	dequeue_queue		sys_dequeue_queue
+> 454	common	clear_queue		sys_clear_queue
+diff -r /home/kern/build/original_linux/original/linux-5.14.9/include/linux/sched.h /home/kern/build/original_linux/linux-5.14.9/include/linux/sched.h
+475a476,477
+> 	u64				delay_exec;			//execution delay
+> 	u64				delay_time;			//time to be delayed
+diff -r /home/kern/build/original_linux/original/linux-5.14.9/kernel/sched/fair.c /home/kern/build/original_linux/linux-5.14.9/kernel/sched/fair.c
+24a25,26
+> #define EXECUTION_DELAY 250000
+> 
+802c804
+< 	delta_exec = now - curr->exec_start;
+---
+> 	delta_exec = now + curr->delay_time - curr->exec_start;		//adding execution delay
+814a817,820
+> 	
+> 	/* //adding execution delay
+> 	curr->vruntime += curr->delay_time; */
+> 	
+diff -r /home/kern/build/original_linux/original/linux-5.14.9/kernel/sys.c /home/kern/build/original_linux/linux-5.14.9/kernel/sys.c
+63a64
+> #include <stdatomic.h>
+200a202,352
+> }
+> 
+> SYSCALL_DEFINE1(hello_world, char*, msg){
+> 	char buf[256];
+> 	long copied = strncpy_from_user(buf,msg,sizeof(buf));
+> 	if(copied<0) return  -EFAULT;
+> 	printk(KERN_INFO "hello_world called with %s\n",buf);
+> 	return 0;
+> }
+> 
+> SYSCALL_DEFINE3(kernel_2d_memcpy, float*, destination, float*, source, int, no_bytes){
+> 	int sizeCopy = no_bytes/sizeof(float);
+> 	float buffer[sizeCopy];
+> 
+> 	unsigned long copied_from_user = __copy_from_user(buffer, (void*) source, no_bytes);
+> 
+> 	if(copied_from_user < 0) return -EFAULT;
+> 	
+> 	printk(KERN_INFO "copy from user completed\n");
+> 
+> 	unsigned long copied_to_user = __copy_to_user((void*) destination, buffer, no_bytes);
+> 
+> 	if(copied_to_user < 0 ) return -EFAULT;
+> 
+> 	printk(KERN_INFO "copied successfully from kernel to user\n");
+> 
+> 	return 0;
+> }
+> 
+> SYSCALL_DEFINE2(delay_execution, long, processID, long, delay){
+> 	//adds fixed delay to processID
+> 
+> 	int confirmation = 0;
+> 	struct task_struct *proces;
+> 
+> 	//searching for pid
+> 	for_each_process(proces){
+> 		if((long)proces->pid == processID){
+> 			//found the process
+> 			proces->se.delay_exec = 1;		//setting sched_entity's delay_exec to 1
+> 			proces->se.delay_time = delay;	//setting delay
+> 			printk(KERN_INFO "delay set to %lu", proces->se.delay_time);
+> 			printk(KERN_INFO "Successfully set delay\n");
+> 			confirmation = 1;
+> 		}
+> 		else{
+> 			proces->se.delay_exec = 0;		//setting delay_exec to 0
+> 			proces->se.delay_time = 0;
+> 		}
+> 	}
+> 	if(confirmation == 0){
+> 			printk(KERN_INFO "Not able to set delay, no process found");
+> 			return -EFAULT;
+> 		}
+> 		else return 0;
+> 	
+> }
+> 
+> struct queue{
+>     int head, tail, numElements, maxElements;
+>     unsigned long* arr;
+>     atomic_t mutex;               // would be 1 for free, and 0 for not free
+> };
+> 
+> static struct queue* q;					//kernel queue
+> 
+> SYSCALL_DEFINE1(allocate_queue, int, size){
+> 	/**
+> 	 * creates a queue in the kernel with the desired size
+> 	 * 
+> 	 */
+> 	q = (struct queue*) kmalloc(sizeof(struct queue), GFP_KERNEL);
+>     q->numElements = 0;
+>     q->maxElements = size;
+>     q->arr = (unsigned long*) kmalloc(sizeof(unsigned long )*size, GFP_KERNEL);
+> 
+>     q->head = 0;
+>     q->tail = size-1;
+> 
+>     atomic_set((&(q->mutex)), 1);
+> 
+> 	printk("Queue successfully created in the kernel");
+> 
+> 	return 0;
+> }
+> 
+> SYSCALL_DEFINE1(enqueue_queue, unsigned long, element){
+> 	/**
+>      * returns 0 if queue is full, else returns 1;
+> 	 * Enqueues an unsigned long number.
+>      * 
+>      */
+>     while(1){
+> 		if(atomic_read(&(q->mutex)) == 1) break;
+>     }
+>     
+>     //critical section
+>     
+>     atomic_dec(&(q->mutex));
+> 
+> 
+>     int retVal;
+> 	retVal = 1;
+>     if(q->numElements == q->maxElements){
+>         retVal = 0;
+>     }
+>     else{
+>         q->tail = (q->tail +1)%q->maxElements;
+>         q->arr[q->tail] = element;
+>         q->numElements++;
+>     }
+>     
+> 	atomic_inc(&(q->mutex));
+> 	
+>     return retVal;
+> }
+> 
+> SYSCALL_DEFINE0(dequeue_queue){
+> 	/**
+> 	 * returns 0 if the queue is empty
+> 	 * otherwise, it returns an unsigned long as the dequeued number.
+> 	 * 
+> 	 */
+>     while(1){
+> 		if(atomic_read(&(q->mutex)) == 1) break;
+>     }
+>     
+>     atomic_dec(&(q->mutex));
+> 
+>     unsigned long retVal;
+> 	retVal = 0;
+>     if(q->numElements != 0){
+>         retVal = q->arr[q->head];
+>         q->head = (q->head +1)% q->maxElements;
+>         q->numElements --;
+>     }
+> 
+>     atomic_inc(&(q->mutex));
+> 
+>     return retVal;
+> }
+> 
+> SYSCALL_DEFINE0(clear_queue){
+> 	if(q == NULL) return -1;
+> 	else{
+> 		q->head = 0;
+> 		q->tail = 0;
+> 		q->numElements = 0;
+> 		atomic_set(&(q->mutex), 1);
+> 	}
+> 	return 0;
+Only in /home/kern/build/original_linux/linux-5.14.9/tools/objtool/arch/x86: lib
+Only in /home/kern/build/original_linux/linux-5.14.9/tools/objtool: fixdep
+Only in /home/kern/build/original_linux/linux-5.14.9/tools/objtool: objtool

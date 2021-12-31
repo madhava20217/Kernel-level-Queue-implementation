@@ -1,9 +1,15 @@
-all: program
+all: producer consumer
 
-program: program.c
-	gcc -o program program.c
+producer: producer.c
+	gcc -o producer producer.c
 
-clearprog: program
-	rm program
+clearproducer: producer
+	rm producer
 
-clean: clearprog
+clearconsumer: consumer
+	rm consumer
+
+consumer: consumer.c
+	gcc -o consumer consumer.c
+
+clean: clearconsumer clearproducer
