@@ -36,3 +36,6 @@ the queue is full.
 Spinloops were used in the enqueue and dequeue syscalls (based on the mutex).
 
 Enqueue and dequeue operations were done in the standard way for fixed size array based implementations of the queue, however with kmalloc being used for the array initialisation with the GFP_KERNEL flag which implies kernel space allocation.
+
+NOTE: The other syscalls are present in the patch file because I had taken the diff with respect to the original kernel. Please ignore them.
+    Command for diff was: diff -r (original linux) (modified linux)  > (patch file path)
